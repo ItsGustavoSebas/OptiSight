@@ -1,0 +1,8 @@
+# Ignorar la carpeta imagenes
+imagenes/
+
+# Ignorar la carpeta __pycache__
+__pycache__/
+
+# Ignorar el archivo modelo_objeto.h5
+modelo_objeto.h5
