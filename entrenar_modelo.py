@@ -53,13 +53,9 @@ def save_images(images, predictions, true_labels, correct_dir, incorrect_dir):
         if true_label == 0:
             folder = incorrect_dir
             print(f"Guardando clase 0 en incorrectas: {folder}")
-        elif label_pred == true_label:
+        else:
             folder = correct_dir
             print(f"Guardando en correctas: {folder}")
-        else:
-            folder = incorrect_dir
-            print(f"Guardando en incorrectas: {folder}")
-
         # Guardar la imagen
         filename = os.path.join(folder, f"img_{i}_pred_{label_pred}_true_{true_label}_prob_{pred:.2f}.jpg")
         img_to_save = (image * 255).astype(np.uint8)
