@@ -8,7 +8,9 @@ import tensorflow as tf
 import threading
 import os
 import shutil
-
+import csv
+import pandas as pd 
+import matplotlib.pyplot as plt
 # Función para verificar las credenciales
 def verificar_credenciales():
     usuario = entry_usuario.get()
@@ -65,6 +67,9 @@ def abrir_dashboard():
     # Botón para ejecutar el archivo de reconocimiento de objetos
     boton_opcion3 = tk.Button(dashboard, text="Reconocimiento de objetos", font=("Arial", 14), width=30, bg="#34495E", fg="white", command=ejecutar_archivo_reconocimiento)
     boton_opcion3.pack(pady=10)
+    
+    boton_reportes = tk.Button(dashboard, text="Ver Reportes", font=("Arial", 14), width=30, bg="#34495E", fg="white", command=mostrar_reporte_anomalias)
+    boton_reportes.pack(pady=10)
 
     # Botón para limpiar capturas
     boton_limpiar_capturas = tk.Button(dashboard, text="Limpiar Capturas", font=("Arial", 14), width=30, bg="#E74C3C", fg="white", command=limpiar_capturas)
@@ -103,6 +108,45 @@ def limpiar_entrenamiento():
             messagebox.showerror("Error", f"No se pudo eliminar el archivo: {e}")
     else:
         messagebox.showinfo("Información", "El archivo 'modelo_objeto.h5' no existe.")
+        
+def mostrar_reporte_anomalias():
+    archivo_csv = "detections_log.csv"
+    if not os.path.exists(archivo_csv):
+        messagebox.showerror("Error", f"El archivo {archivo_csv} no existe.")
+        return
+
+    try:
+        # Leer el archivo CSV
+        df = pd.read_csv(archivo_csv)
+
+        # Verificar si la columna 'Error' existe
+        if 'Camera ID' not in df.columns:
+            messagebox.showerror("Error", "El archivo CSV no contiene la columna 'Camera ID'.")
+            return
+
+        # Contar los errores
+        resumen_errores = df['Camera ID'].value_counts()
+
+        # Crear gráfico de barras
+        plt.figure(figsize=(8, 6))
+        barras = resumen_errores.plot(kind='bar', color='orange')
+
+        plt.title("Reporte de Anomalías", fontsize=16)
+        plt.xlabel("Camara", fontsize=12)
+        plt.ylabel("Frecuencia", fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+
+        # Agregar totales encima de cada barra
+        for i, total in enumerate(resumen_errores):
+            plt.text(i, total + 0.5, str(total), ha='center', fontsize=10, color='black')
+
+        plt.tight_layout()
+
+        # Mostrar el gráfico
+        plt.show()
+
+    except Exception as e:
+        messagebox.showerror("Error", f"No se pudo generar el reporte: {e}")
 
 def limpiar_anomalias():
     archivo = "autoencoder_model.h5"

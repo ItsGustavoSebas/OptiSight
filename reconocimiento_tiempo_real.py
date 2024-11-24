@@ -11,12 +11,20 @@ import os
 import threading
 from queue import Queue, Empty  # Importar la excepción Empty
 import queue
+import csv
+from datetime import datetime, timedelta
 
 # Cargar los modelos
 modelo_objeto = tf.keras.models.load_model('modelo_objeto.h5')
 autoencoder = tf.keras.models.load_model('autoencoder_model.h5', compile=False)
 autoencoder.compile(optimizer='adam', loss='mse')
-
+csv_file = "detections_log.csv"
+try:
+    with open(csv_file, mode='x', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Timestamp", "Camera ID", "Error", "Anomaly Threshold", "Object Prediction"])
+except FileExistsError:
+    pass
 class CameraThread(threading.Thread):
     def __init__(self, idx, cap, models, result_queue, stop_event):
         threading.Thread.__init__(self)
@@ -365,57 +373,69 @@ class App:
         
     def update_gui(self):
         try:
+            # Si no existe, inicializamos el diccionario para los tiempos de log por cámara
+            if not hasattr(self, 'last_log_time'):
+                self.last_log_time = {}
+
             while True:
                 result = self.result_queue.get_nowait()
                 idx = result['idx']
                 frame = result['frame']
                 error = result['error']
                 obj_prediction = result['obj_prediction']
-                # anomaly_bounding_boxes = result.get('anomaly_bounding_boxes', [])
                 object_bounding_boxes = result.get('object_bounding_boxes', [])
                 # Ajuste del umbral de anomalía mediante multiplicador
                 anomaly_multiplier = self.anomaly_multipliers[idx].get()
                 anomaly_percentage = self.anomaly_percentages[idx].get() / 100.0
                 anomaly_threshold = self.base_anomaly_threshold * anomaly_multiplier * anomaly_percentage
-    
+        
                 error = round(error, 6)
                 anomaly_threshold = round(anomaly_threshold, 6)
-    
-                anomaly_label = "Anomalía detectada" if error > anomaly_threshold else "Normal"
-                anomaly_color = (0, 0, 255) if error > anomaly_threshold else (0, 255, 0)
-    
-                self.info_labels[idx].config(text=f"Cámara {idx} - Error: {error:.6f}, Umbral: {anomaly_threshold:.6f}")
-    
-                anomaly_detected = error > anomaly_threshold   
-
+        
+                anomaly_detected = error > anomaly_threshold
                 object_threshold = self.object_sensitivity.get()
-                if obj_prediction > object_threshold:
-                    obj_label = "Objeto detectado"
-                    obj_color = (0, 255, 0)  # Verde
+                object_detected = obj_prediction > object_threshold
+
+                # Verificar si debe guardarse el log (una vez por segundo)
+                current_time = datetime.now()
+                last_time = self.last_log_time.get(idx, datetime.min)  # Valor por defecto: fecha mínima
+                if (current_time - last_time) >= timedelta(seconds=1):
+                    if anomaly_detected and object_detected:
+                        # Registrar la fecha y hora
+                        timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S")
+                        print(f"Registro: Cámara {idx} - Anomalía y objeto detectados a las {timestamp}")
+                        
+                        # Guardar en el archivo CSV
+                        with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
+                            writer = csv.writer(file)
+                            writer.writerow([timestamp, idx, error, anomaly_threshold, obj_prediction])
+                        
+                        # Actualizar el tiempo del último registro
+                        self.last_log_time[idx] = current_time
+
+                # Configurar etiqueta de objeto
+                if anomaly_detected and object_detected:
+                    obj_label = "Objeto con anomalía"
+                    obj_color = (0, 0, 255) 
+                    for x, y, w, h in object_bounding_boxes:
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                
+                elif object_detected:
+                    obj_label = "Objeto normal"
+                    obj_color = (0, 255, 0) 
+                
                 else:
                     obj_label = "Objeto no detectado"
-                    obj_color = (0, 0, 255)  # Rojo
-    
-                # Agregar texto al frame
+                    obj_color = (255, 165, 0) 
+
                 cv2.putText(frame, obj_label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, obj_color, 2)
-                cv2.putText(frame, anomaly_label, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, anomaly_color, 2)
-    
+
                 # Mostrar el error y el umbral en la consola
                 print(f"Cámara {idx} - Error: {error:.6f}, Umbral: {anomaly_threshold:.6f}")
 
-                if anomaly_detected:
-                    # Dibujar cuadros de objetos detectados
-                    for x, y, w, h in object_bounding_boxes:
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        
-                    # # Dibujar cuadros de anomalías detectadas
-                    # for x, y, w, h in anomaly_bounding_boxes:
-                    #     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-
-
                 # Redimensionar el frame para mostrarlo en la interfaz
                 frame_resized = cv2.resize(frame, (320, 240))  # Ajusta el tamaño según tus necesidades
-    
+
                 # Convertir el frame a formato compatible con Tkinter
                 cv2image = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(cv2image)
@@ -426,7 +446,6 @@ class App:
                 self.info_labels[idx].config(
                     text=f"Cámara {idx} - Error: {error:.6f}, Umbral: {anomaly_threshold:.6f}"
                 )
-
         except queue.Empty:
             pass
 
@@ -439,7 +458,7 @@ class App:
             for cap in self.caps.values():
                 cap.release()
             self.caps = {}
-
+            
 if __name__ == "__main__":
     root = tk.Tk()
     app = App(root)

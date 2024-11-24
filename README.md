@@ -22,19 +22,5 @@ Para iniciar el proyecto ejecutar estos comandos:
 Para crear las imagenes:
 
 ```bash
-python capturar_imagenes.py
-```
-
-poner objeto para imagenes positivas y no_objeto para imagenes negativas
-
-Para entrenar el modelo:
-
-```bash
-python entrenar_modelo.py
-```
-
-Para iniciar el reconocimiento:
-
-```bash
-python reconocimiento_tiempo_real.py
+python interfaz.pyw
 ```
