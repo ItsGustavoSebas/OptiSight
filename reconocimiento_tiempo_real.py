@@ -183,6 +183,8 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Detección de Objetos y Anomalías")
+        self.anomaly_multipliers = {}  # Almacena los multiplicadores por cámara
+        self.anomaly_percentages = {}  # Almacena los porcentajes por cámara
         
         # Etiqueta principal
         label = tk.Label(root, text="Detección de Objetos y Anomalías", font=("Helvetica", 16))
@@ -284,7 +286,31 @@ class App:
             camera_frame = tk.Frame(self.video_frame, bd=2, relief=tk.SOLID, padx=5, pady=5)
             camera_frame.grid(row=idx // 2, column=idx % 2, padx=5, pady=5)
             self.camera_frames[idx] = camera_frame
+            controls_frame = tk.Frame(camera_frame)
+            controls_frame.pack(pady=5)
+            self.anomaly_multipliers[idx] = tk.DoubleVar(value=1.0)
+            self.anomaly_percentages[idx] = tk.DoubleVar(value=100.0)
 
+            tk.Label(controls_frame, text="Multiplicador de umbral:").grid(row=0, column=0, sticky="e")
+            tk.Scale(
+                controls_frame,
+                from_=0.1,
+                to=3.0,
+                resolution=0.1,
+                orient=tk.HORIZONTAL,
+                variable=self.anomaly_multipliers[idx]
+            ).grid(row=0, column=1)
+    
+            # Porcentaje del multiplicador de umbral de anomalía
+            tk.Label(controls_frame, text="Porcentaje del multiplicador:").grid(row=1, column=0, sticky="e")
+            tk.Scale(
+                controls_frame,
+                from_=0,
+                to=100,
+                resolution=1,
+                orient=tk.HORIZONTAL,
+                variable=self.anomaly_percentages[idx]
+            ).grid(row=1, column=1)
 
             # Crear la etiqueta de información dentro del Frame de la cámara
             info_label = tk.Label(
@@ -358,9 +384,9 @@ class App:
                 error = result['error']
                 obj_prediction = result['obj_prediction']
                 object_bounding_boxes = result.get('object_bounding_boxes', [])
-                
-                anomaly_multiplier = self.anomaly_multiplier.get()
-                anomaly_percentage = self.anomaly_percentage.get() / 100.0
+                # Ajuste del umbral de anomalía mediante multiplicador
+                anomaly_multiplier = self.anomaly_multipliers[idx].get()
+                anomaly_percentage = self.anomaly_percentages[idx].get() / 100.0
                 anomaly_threshold = self.base_anomaly_threshold * anomaly_multiplier * anomaly_percentage
         
                 error = round(error, 6)
