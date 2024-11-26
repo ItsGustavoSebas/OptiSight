@@ -27,7 +27,7 @@ def verificar_credenciales():
 def abrir_dashboard():
     dashboard = tk.Tk()  # Nueva ventana para el dashboard
     dashboard.title("Dashboard")
-    dashboard.geometry("1000x800")
+    dashboard.geometry("1000x900")
 
      # Imagen de fondo
     # Imagen de fondo
@@ -35,7 +35,7 @@ def abrir_dashboard():
     try:
         # Cargar y redimensionar la imagen
         background_image = Image.open(background_image_path)
-        background_image = background_image.resize((1000, 800))
+        background_image = background_image.resize((1000, 900))
         bg_image = ImageTk.PhotoImage(background_image)
 
         # Crear un Label para la imagen de fondo
