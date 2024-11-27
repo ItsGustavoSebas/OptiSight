@@ -283,7 +283,7 @@ class App:
             camera_thread.start()
             self.camera_threads[idx] = camera_thread
 
-            camera_frame = tk.Frame(self.video_frame, bd=2, relief=tk.SOLID, padx=5, pady=5)
+            camera_frame = tk.Frame(self.video_frame, bd=2, relief=tk.SOLID, padx=5, pady=5, highlightbackground="black", highlightthickness=1)
             camera_frame.grid(row=idx // 2, column=idx % 2, padx=5, pady=5)
             self.camera_frames[idx] = camera_frame
             controls_frame = tk.Frame(camera_frame)
@@ -399,6 +399,11 @@ class App:
                 # Verificar si debe guardarse el log (una vez por segundo)
                 current_time = datetime.now()
                 last_time = self.last_log_time.get(idx, datetime.min)  # Valor por defecto: fecha mínima
+                if anomaly_detected and object_detected:
+                    self.camera_frames[idx].config(highlightbackground="red", highlightthickness=2)
+                else:
+                    self.camera_frames[idx].config(highlightbackground="black", highlightthickness=1)
+
                 if (current_time - last_time) >= timedelta(seconds=1):
                     if anomaly_detected and object_detected:
                         # Registrar la fecha y hora

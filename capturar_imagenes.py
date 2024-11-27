@@ -15,13 +15,14 @@ class ImageCaptureApp:
         # Variables de la interfaz
         self.label_var = tk.StringVar(value="objeto")
         self.num_images_var = tk.IntVar(value=50)
-        self.camera_indices_var = tk.StringVar(value="0,1")  # Por defecto, cámaras 0 y 1
         self.save_dir_var = tk.StringVar(value="imagenes")
+        self.capture_indices_var = tk.StringVar(value="")  # Para especificar cámaras a capturar
         
-        self.cameras = {}  # Almacenar cámaras activas
+        self.all_cameras = {}  # Todas las cámaras detectadas
         self.frames = {}   # Almacenar etiquetas para mostrar los videos
         self.capturing = False  # Bandera para la captura
         self.img_counts = {}  # Contador de imágenes por cámara
+        self.update_job = None  # Identificador de la actualización programada
         
         # Título principal
         title = tk.Label(root, text="Captura de Imágenes", font=("Helvetica", 18))
@@ -31,8 +32,8 @@ class ImageCaptureApp:
         config_frame = tk.Frame(root)
         config_frame.pack(pady=10)
         
-        tk.Label(config_frame, text="Índices de cámaras (separados por comas):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        tk.Entry(config_frame, textvariable=self.camera_indices_var).grid(row=0, column=1, padx=5, pady=5)
+        tk.Label(config_frame, text="Índices de cámaras para capturar (separados por comas):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(config_frame, textvariable=self.capture_indices_var).grid(row=0, column=1, padx=5, pady=5)
         
         tk.Label(config_frame, text="Etiqueta:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         tk.Entry(config_frame, textvariable=self.label_var).grid(row=1, column=1, padx=5, pady=5)
@@ -55,26 +56,40 @@ class ImageCaptureApp:
         self.video_frame = tk.Frame(root)
         self.video_frame.pack(pady=10, expand=True, fill="both")
         
+        # Detectar y abrir cámaras disponibles
+        self.detect_and_open_cameras()
+        
+        # Iniciar la actualización de los feeds de video
+        self.update_video_feeds()
+        
         # Manejar el cierre de la ventana
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def detect_and_open_cameras(self):
+        max_cameras = 10  # Número máximo de cámaras a comprobar
+        for idx in range(max_cameras):
+            cap = cv2.VideoCapture(idx)
+            if cap.isOpened():
+                self.all_cameras[idx] = cap
+                
+                # Crear un frame para la cámara
+                cam_frame = tk.Frame(self.video_frame, bd=2, relief=tk.SOLID)
+                cam_frame.pack(side="left", padx=10, pady=10)
+                
+                # Etiqueta con el índice de la cámara
+                label_widget = tk.Label(cam_frame, text=f"Cámara {idx}", font=("Helvetica", 12))
+                label_widget.pack()
+                
+                # Etiqueta para mostrar el video
+                video_label = tk.Label(cam_frame)
+                video_label.pack()
+                self.frames[idx] = video_label
+            else:
+                cap.release()
     
     def start_capture(self):
         if self.capturing:
             messagebox.showwarning("Advertencia", "La captura ya está en curso.")
-            return
-        
-        # Limpiar cámaras y widgets anteriores
-        self.stop_capture(clear_widgets=True)
-        
-        camera_indices = self.camera_indices_var.get()
-        if not camera_indices:
-            messagebox.showerror("Error", "Debes especificar al menos una cámara.")
-            return
-        
-        try:
-            camera_indices = list(map(int, camera_indices.split(",")))
-        except ValueError:
-            messagebox.showerror("Error", "Los índices de las cámaras deben ser números separados por comas.")
             return
         
         label = self.label_var.get().strip()
@@ -92,57 +107,51 @@ class ImageCaptureApp:
             messagebox.showerror("Error", "Debes especificar una carpeta para guardar las imágenes.")
             return
         
-        # Crear carpetas para guardar imágenes y abrir cámaras
-        self.frames = {}
-        self.cameras = {}
-        self.img_counts = {}
-        
-        for idx in camera_indices:
-            cap = cv2.VideoCapture(idx)
-            if not cap.isOpened():
-                messagebox.showerror("Error", f"No se pudo abrir la cámara {idx}.")
-                continue
-            self.cameras[idx] = cap
-            self.img_counts[idx] = 0  # Inicializar contador de imágenes para esta cámara
-            
-            # Crear carpeta para guardar imágenes
-            cam_folder = os.path.join(save_dir, f"camara_{idx}", label)
-            os.makedirs(cam_folder, exist_ok=True)
-            
-            # Crear un frame para la cámara
-            cam_frame = tk.Frame(self.video_frame, bd=2, relief=tk.SOLID)
-            cam_frame.pack(side="left", padx=10, pady=10)
-            
-            # Etiqueta con el índice de la cámara
-            label_widget = tk.Label(cam_frame, text=f"Cámara {idx}", font=("Helvetica", 12))
-            label_widget.pack()
-            
-            # Etiqueta para mostrar el video
-            video_label = tk.Label(cam_frame)
-            video_label.pack()
-            self.frames[idx] = video_label
-        
-        if not self.cameras:
-            messagebox.showerror("Error", "No se pudieron abrir las cámaras especificadas.")
+        # Obtener los índices de las cámaras a capturar
+        capture_indices = self.capture_indices_var.get()
+        if not capture_indices:
+            messagebox.showerror("Error", "Debes especificar al menos una cámara para capturar.")
             return
         
-        self.capturing = True
+        try:
+            capture_indices = list(map(int, capture_indices.split(",")))
+        except ValueError:
+            messagebox.showerror("Error", "Los índices de las cámaras deben ser números separados por comas.")
+            return
         
-        # Iniciar la actualización de los feeds de video
-        self.update_video_feeds()
+        # Verificar que las cámaras especificadas estén disponibles
+        self.cameras_to_capture = {}
+        for idx in capture_indices:
+            if idx in self.all_cameras:
+                self.cameras_to_capture[idx] = self.all_cameras[idx]
+                self.img_counts[idx] = 0  # Inicializar contador de imágenes para esta cámara
+            else:
+                messagebox.showerror("Error", f"La cámara {idx} no está disponible.")
+                return
+        
+        if not self.cameras_to_capture:
+            messagebox.showerror("Error", "No se encontraron las cámaras especificadas para capturar.")
+            return
+        
+        # Crear carpetas para guardar imágenes
+        for idx in self.cameras_to_capture.keys():
+            cam_folder = os.path.join(save_dir, f"camara_{idx}", label)
+            os.makedirs(cam_folder, exist_ok=True)
+        
+        self.capturing = True
         
         # Iniciar el bucle de captura en un hilo separado
         self.capture_thread = threading.Thread(target=self.capture_loop, args=(label, num_images, save_dir))
         self.capture_thread.start()
     
     def update_video_feeds(self):
-        if not self.cameras:
+        if not self.all_cameras:
             return
-        for idx, cap in self.cameras.items():
+        for idx, cap in self.all_cameras.items():
             ret, frame = cap.read()
             if ret:
-                # Si está capturando, agregar "Capturando" al frame
-                if self.capturing:
+                # Si está capturando y esta cámara está en las seleccionadas, agregar "Capturando" al frame
+                if self.capturing and idx in self.cameras_to_capture:
                     cv2.putText(frame, "Capturando", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
                 # Redimensionar y convertir el frame para Tkinter
@@ -155,17 +164,17 @@ class ImageCaptureApp:
             else:
                 # Si no se pudo leer el frame, eliminar la cámara
                 cap.release()
-                self.cameras.pop(idx)
+                self.all_cameras.pop(idx)
                 self.frames[idx].configure(text=f"Cámara {idx} - Error")
                 self.frames.pop(idx)
         
-        # Programar la siguiente actualización
-        self.root.after(30, self.update_video_feeds)
+        # Programar la siguiente actualización y almacenar el identificador
+        self.update_job = self.root.after(30, self.update_video_feeds)
     
     def capture_loop(self, label, num_images, save_dir):
         while self.capturing:
             all_cameras_done = True
-            for idx, cap in self.cameras.items():
+            for idx, cap in self.cameras_to_capture.items():
                 ret, frame = cap.read()
                 if not ret:
                     continue
@@ -187,25 +196,25 @@ class ImageCaptureApp:
             else:
                 time.sleep(0.01)  # Pequeña pausa para evitar alto uso de CPU
     
-    def stop_capture(self, clear_widgets=False):
+    def stop_capture(self):
         if self.capturing:
             self.capturing = False
             messagebox.showinfo("Información", "Captura detenida.")
-        # Liberar cámaras
-        for cap in self.cameras.values():
-            cap.release()
-        self.cameras.clear()
-        # Eliminar widgets si es necesario
-        if clear_widgets:
-            for frame in self.frames.values():
-                frame.master.destroy()
-            self.frames.clear()
+        # No cerramos las cámaras ni detenemos el feed de video, solo detenemos la captura
     
     def on_closing(self):
-        # Liberar todas las cámaras
-        self.stop_capture(clear_widgets=True)
+        # Detener la captura y liberar recursos
+        self.capturing = False
+        # Cancelar la actualización programada de video feeds
+        if hasattr(self, 'update_job') and self.update_job is not None:
+            self.root.after_cancel(self.update_job)
+            self.update_job = None
+        # Liberar cámaras
+        for cap in self.all_cameras.values():
+            cap.release()
+        self.all_cameras.clear()
         self.root.destroy()
-    
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = ImageCaptureApp(root)
